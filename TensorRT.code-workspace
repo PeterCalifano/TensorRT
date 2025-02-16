@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../torchAutoForge-deploy"
+		},
+		{
+			"path": "../pyTorchAutoForge"
+		},
+		{
+			"path": "../../code-samples_PeterCdev"
+		}
+	],
+	"settings": {}
+}
