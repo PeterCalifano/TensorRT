@@ -140,9 +140,9 @@ bool SampleSegmentation::infer(const std::string &input_filename, int32_t width,
     std::cout << "Fetching datatype for " << output_name << std::endl;
     std::cout << "Found datatype: " << static_cast<int>(mEngine->getTensorDataType(output_name)) << std::endl;
     
-    assert(mEngine->getTensorDataType(output_name) == nvinfer1::DataType::kFLOAT);
+    assert(mEngine->getTensorDataType(output_name) == nvinfer1::DataType::kINT64);
     auto output_dims = context->getTensorShape(output_name);
-    auto output_size = util::getMemorySize(output_dims, sizeof(float));
+    auto output_size = util::getMemorySize(output_dims, sizeof(int64_t)); // Changed from sizeof(float) to sizeof(int64_t)
 
     // Allocate CUDA memory for input and output bindings
     void *input_mem{nullptr};
@@ -194,8 +194,8 @@ bool SampleSegmentation::infer(const std::string &input_filename, int32_t width,
         return false;
     }
 
-    // Copy predictions from output binding memory
-    auto output_buffer = std::unique_ptr<float>{new float[output_size]}; // Ptr to buffer
+// Copy predictions from output binding memory
+auto output_buffer = std::unique_ptr<int64_t>{new int64_t[output_size]}; // Fixed type from float to int64_t
 
     if (cudaMemcpyAsync(output_buffer.get(), output_mem, output_size, cudaMemcpyDeviceToHost, stream) != cudaSuccess) // Asynch copy from device to host
     {
@@ -210,7 +210,7 @@ bool SampleSegmentation::infer(const std::string &input_filename, int32_t width,
     const std::vector<int> palette{(0x1 << 25) - 1, (0x1 << 15) - 1, (0x1 << 21) - 1};
     auto output_image{util::ArgmaxImageWriter(output_filename, output_dims, palette, num_classes)}; // Utility class in TensorRT/quickstart/common to write images
 
-    float *output_ptr = output_buffer.get();
+    int64_t *output_ptr = output_buffer.get();
     std::vector<int32_t> output_buffer_casted(output_size);
     std::cout << "Writing segmented image to file..." << std::endl;
 
