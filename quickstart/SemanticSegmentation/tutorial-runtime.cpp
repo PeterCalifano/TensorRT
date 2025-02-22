@@ -22,11 +22,11 @@
 #include <memory>
 #include <sstream>
 
-#include <cuda_runtime_api.h>
 #include "NvInfer.h"
 #include "NvOnnxParser.h"
 #include "logger.h"
 #include "util.h"
+#include <cuda_runtime_api.h>
 
 constexpr long long operator"" _MiB(long long unsigned val)
 {
@@ -44,41 +44,49 @@ using sample::gLogInfo;
 class SampleSegmentation
 {
 
-public:
-    SampleSegmentation(const std::string& engineFilename);
-    bool infer(const std::string& input_filename, int32_t width, int32_t height, const std::string& output_filename);
+  public:
+    SampleSegmentation(const std::string &engineFilename);
+    bool infer(const std::string &input_filename, int32_t width, int32_t height, const std::string &output_filename);
 
-private:
-    std::string mEngineFilename;                    //!< Filename of the serialized engine.
+  private:
+    std::string mEngineFilename; //!< Filename of the serialized engine.
 
-    nvinfer1::Dims mInputDims;                      //!< The dimensions of the input to the network.
-    nvinfer1::Dims mOutputDims;                     //!< The dimensions of the output to the network.
+    nvinfer1::Dims mInputDims;  //!< The dimensions of the input to the network.
+    nvinfer1::Dims mOutputDims; //!< The dimensions of the output to the network.
 
     std::unique_ptr<nvinfer1::IRuntime> mRuntime;   //!< The TensorRT runtime used to run the network
     std::unique_ptr<nvinfer1::ICudaEngine> mEngine; //!< The TensorRT engine used to run the network
 };
 
-SampleSegmentation::SampleSegmentation(const std::string& engineFilename)
-    : mEngineFilename(engineFilename)
-    , mEngine(nullptr)
+// Instantiate inference context and engine from serialized engine file
+
+
+SampleSegmentation::SampleSegmentation(const std::string &engineFilename)
+    : mEngineFilename(engineFilename), mEngine(nullptr)
 {
     // De-serialize engine from file
-    std::ifstream engineFile(engineFilename, std::ios::binary);
+    std::ifstream engineFile(engineFilename, std::ios::binary); // Open engine file as binary
     if (engineFile.fail())
     {
+        gLogError << "ERROR: failed to open engine file: " << engineFilename << std::endl;
         return;
     }
 
+    // Get size of file using seekg and tellg (go to end, get current position, go to beginning)
     engineFile.seekg(0, std::ifstream::end);
     auto fsize = engineFile.tellg();
     engineFile.seekg(0, std::ifstream::beg);
 
+    // Read fsize bytes from engine file into engineData
     std::vector<char> engineData(fsize);
     engineFile.read(engineData.data(), fsize);
 
+    // Define runtime context (logger using "this" Logger)
     mRuntime.reset(nvinfer1::createInferRuntime(sample::gLogger.getTRTLogger()));
+    
+    // Deserialize engine from engineData in mRuntime context memory
     mEngine.reset(mRuntime->deserializeCudaEngine(engineData.data(), fsize));
-    assert(mEngine.get() != nullptr);
+    assert(mEngine.get() != nullptr); // Assert engine is not nullptr
 }
 
 //!
@@ -86,7 +94,7 @@ SampleSegmentation::SampleSegmentation(const std::string& engineFilename)
 //!
 //! \details Allocate input and output memory, and executes the engine.
 //!
-bool SampleSegmentation::infer(const std::string& input_filename, int32_t width, int32_t height, const std::string& output_filename)
+bool SampleSegmentation::infer(const std::string &input_filename, int32_t width, int32_t height, const std::string &output_filename)
 {
     auto context = std::unique_ptr<nvinfer1::IExecutionContext>(mEngine->createExecutionContext());
     if (!context)
@@ -94,25 +102,26 @@ bool SampleSegmentation::infer(const std::string& input_filename, int32_t width,
         return false;
     }
 
-    char const* input_name = "input";
+    char const *input_name = "input";
     assert(mEngine->getTensorDataType(input_name) == nvinfer1::DataType::kFLOAT);
+
     auto input_dims = nvinfer1::Dims4{1, /* channels */ 3, height, width};
     context->setInputShape(input_name, input_dims);
     auto input_size = util::getMemorySize(input_dims, sizeof(float));
 
-    char const* output_name = "output";
+    char const *output_name = "output";
     assert(mEngine->getTensorDataType(output_name) == nvinfer1::DataType::kINT64);
     auto output_dims = context->getTensorShape(output_name);
     auto output_size = util::getMemorySize(output_dims, sizeof(int64_t));
 
     // Allocate CUDA memory for input and output bindings
-    void* input_mem{nullptr};
+    void *input_mem{nullptr};
     if (cudaMalloc(&input_mem, input_size) != cudaSuccess)
     {
         gLogError << "ERROR: input cuda memory allocation failed, size = " << input_size << " bytes" << std::endl;
         return false;
     }
-    void* output_mem{nullptr};
+    void *output_mem{nullptr};
     if (cudaMalloc(&output_mem, output_size) != cudaSuccess)
     {
         gLogError << "ERROR: output cuda memory allocation failed, size = " << output_size << " bytes" << std::endl;
@@ -162,9 +171,10 @@ bool SampleSegmentation::infer(const std::string& input_filename, int32_t width,
     const int num_classes{21};
     const std::vector<int> palette{(0x1 << 25) - 1, (0x1 << 15) - 1, (0x1 << 21) - 1};
     auto output_image{util::ArgmaxImageWriter(output_filename, output_dims, palette, num_classes)};
-    int64_t* output_ptr = output_buffer.get();
+    int64_t *output_ptr = output_buffer.get();
     std::vector<int32_t> output_buffer_casted(output_size);
-    for (size_t i = 0; i < output_size; ++i) {
+    for (size_t i = 0; i < output_size; ++i)
+    {
         output_buffer_casted[i] = static_cast<int32_t>(output_ptr[i]);
     }
     output_image.process(output_buffer_casted.data());
@@ -176,7 +186,7 @@ bool SampleSegmentation::infer(const std::string& input_filename, int32_t width,
     return true;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     int32_t width{1282};
     int32_t height{1026};
